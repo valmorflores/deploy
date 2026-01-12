@@ -52,6 +52,19 @@ function downloadFile($url, $destination) {
     return $result && $httpCode == 200;
 }
 
+// Função para normalizar caminhos (converte \ para / e depois para o separador do sistema)
+function normalizePath($path) {
+    // Converter todas as barras invertidas para barras normais
+    $path = str_replace('\\', '/', $path);
+    // Remover barras duplicadas
+    $path = preg_replace('#/+#', '/', $path);
+    // Converter para o separador do sistema
+    if (DIRECTORY_SEPARATOR !== '/') {
+        $path = str_replace('/', DIRECTORY_SEPARATOR, $path);
+    }
+    return $path;
+}
+
 // Função para descompactar
 function extractZip($zipFile, $destination) {
     $zip = new ZipArchive();
@@ -60,8 +73,11 @@ function extractZip($zipFile, $destination) {
     }
     
     // Garantir que o diretório de destino existe
+    $destination = rtrim($destination, '/\\');
     if (!is_dir($destination)) {
-        mkdir($destination, 0777, true);
+        if (!mkdir($destination, 0777, true)) {
+            return false;
+        }
     }
     
     // Extrair cada entrada individualmente para garantir estrutura correta
@@ -69,24 +85,33 @@ function extractZip($zipFile, $destination) {
         $filename = $zip->getNameIndex($i);
         
         // Ignorar entradas vazias ou inválidas
-        if ($filename === false) {
+        if ($filename === false || empty($filename)) {
             continue;
         }
         
-        // Remover barras no início se existirem
-        $filename = ltrim($filename, '/\\');
+        // Normalizar o caminho do arquivo (converter \ para /)
+        $filename = str_replace('\\', '/', $filename);
+        
+        // Remover barras no início
+        $filename = ltrim($filename, '/');
         
         // Pular se estiver vazio após limpeza
         if (empty($filename)) {
             continue;
         }
         
-        $filePath = $destination . DIRECTORY_SEPARATOR . $filename;
-        
         // Verificar se é um diretório (termina com /)
-        if (substr($filename, -1) === '/' || substr($filename, -1) === '\\') {
-            // É um diretório - criar a pasta
-            $dirPath = rtrim($filePath, '/\\');
+        $isDirectory = (substr($filename, -1) === '/');
+        
+        if ($isDirectory) {
+            // É um diretório - remover a barra final e criar a pasta
+            $filename = rtrim($filename, '/');
+            if (empty($filename)) {
+                continue;
+            }
+            
+            $dirPath = $destination . DIRECTORY_SEPARATOR . normalizePath($filename);
+            
             if (!is_dir($dirPath)) {
                 if (!mkdir($dirPath, 0777, true)) {
                     $zip->close();
@@ -95,6 +120,10 @@ function extractZip($zipFile, $destination) {
             }
         } else {
             // É um arquivo - extrair
+            $normalizedPath = normalizePath($filename);
+            $filePath = $destination . DIRECTORY_SEPARATOR . $normalizedPath;
+            
+            // Criar diretório pai se não existir
             $dirPath = dirname($filePath);
             if (!is_dir($dirPath)) {
                 if (!mkdir($dirPath, 0777, true)) {
