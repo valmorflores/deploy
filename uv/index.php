@@ -55,12 +55,67 @@ function downloadFile($url, $destination) {
 // Função para descompactar
 function extractZip($zipFile, $destination) {
     $zip = new ZipArchive();
-    if ($zip->open($zipFile) === TRUE) {
-        $zip->extractTo($destination);
-        $zip->close();
-        return true;
+    if ($zip->open($zipFile) !== TRUE) {
+        return false;
     }
-    return false;
+    
+    // Garantir que o diretório de destino existe
+    if (!is_dir($destination)) {
+        mkdir($destination, 0777, true);
+    }
+    
+    // Extrair cada entrada individualmente para garantir estrutura correta
+    for ($i = 0; $i < $zip->numFiles; $i++) {
+        $filename = $zip->getNameIndex($i);
+        
+        // Ignorar entradas vazias ou inválidas
+        if ($filename === false) {
+            continue;
+        }
+        
+        // Remover barras no início se existirem
+        $filename = ltrim($filename, '/\\');
+        
+        // Pular se estiver vazio após limpeza
+        if (empty($filename)) {
+            continue;
+        }
+        
+        $filePath = $destination . DIRECTORY_SEPARATOR . $filename;
+        
+        // Verificar se é um diretório (termina com /)
+        if (substr($filename, -1) === '/' || substr($filename, -1) === '\\') {
+            // É um diretório - criar a pasta
+            $dirPath = rtrim($filePath, '/\\');
+            if (!is_dir($dirPath)) {
+                if (!mkdir($dirPath, 0777, true)) {
+                    $zip->close();
+                    return false;
+                }
+            }
+        } else {
+            // É um arquivo - extrair
+            $dirPath = dirname($filePath);
+            if (!is_dir($dirPath)) {
+                if (!mkdir($dirPath, 0777, true)) {
+                    $zip->close();
+                    return false;
+                }
+            }
+            
+            // Extrair o arquivo
+            $content = $zip->getFromIndex($i);
+            if ($content !== false) {
+                if (file_put_contents($filePath, $content) === false) {
+                    $zip->close();
+                    return false;
+                }
+            }
+        }
+    }
+    
+    $zip->close();
+    return true;
 }
 
 // Função para copiar recursivamente conteúdo de uma pasta para outra
